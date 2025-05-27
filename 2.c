@@ -82,36 +82,40 @@ pthread_barrier_t barrier;
 // N/T * (idW + 1) a N
 
 
-void calcularFuerzas(int id,int length, cuerpos_t *cuerpos, cuerpos_t *cuerpos2){
+void calcularFuerzas(int id,int length, cuerpos_t *cuerpos, int isLocal){
     int cuerpo1, cuerpo2,idN;
     float dif_X, dif_Y, dif_Z;
     float distancia;
     float F;
-    idN=id*N;
+	int inicio;
+	int idN = id*N;
+	inicio = subN * (idW + 1);
 	for(cuerpo1 = id; cuerpo1< subN ; cuerpo1+CP){
-		for(cuerpo2 = subN * (idW + 1); cuerpo2< length ; cuerpo2++){
+		if(isLocal){
+			inicio = cuerpo1 + 1;
+		}
+		for(cuerpo2 = inicio; cuerpo2 < length ; cuerpo2++){
 			if ( (cuerpos[cuerpo1].px == cuerpos[cuerpo2].px) && (cuerpos[cuerpo1].py == cuerpos[cuerpo2].py) && (cuerpos[cuerpo1].pz == cuerpos[cuerpo2].pz))
                 continue;
 
-            dif_X = cuerpos2[cuerpo2].px - cuerpos[cuerpo1].px;
-            dif_Y = cuerpos2[cuerpo2].py - cuerpos[cuerpo1].py;
-            dif_Z = cuerpos2[cuerpo2].pz - cuerpos[cuerpo1].pz;
+            dif_X = cuerpos[cuerpo2].px - cuerpos[cuerpo1].px;
+            dif_Y = cuerpos[cuerpo2].py - cuerpos[cuerpo1].py;
+            dif_Z = cuerpos[cuerpo2].pz - cuerpos[cuerpo1].pz;
             distancia = sqrt(dif_X*dif_X + dif_Y*dif_Y + dif_Z*dif_Z);
 
-            F = (G*cuerpos[cuerpo1].masa*cuerpos2[cuerpo2].masa)/(distancia*distancia);
+            F = (G*cuerpos[cuerpo1].masa*cuerpos[cuerpo2].masa)/(distancia*distancia);
             dif_X *= F;
             dif_Y *= F;
             dif_Z *= F;
 
-            int index = idN+(cuerpo1 + subN * idW);
-            fuerzas_parcialesX[index] += dif_X;
-            fuerzas_parcialesY[index] += dif_Y;
-            fuerzas_parcialesZ[index] += dif_Z;
+            
+            fuerzas_parcialesX[idN + cuerpo1] += dif_X;
+            fuerzas_parcialesY[idN + cuerpo1] += dif_Y;
+            fuerzas_parcialesZ[idN + cuerpo1] += dif_Z;
 
-			int indexCuerpo2 = idN+cuerpo2;
-			fuerzas_parcialesX[indexCuerpo2] -= dif_X;
-			fuerzas_parcialesY[indexCuerpo2] -= dif_Y;
-			fuerzas_parcialesZ[indexCuerpo2] -= dif_Z;
+			fuerzas_parcialesX[idN + cuerpo2] -= dif_X;
+			fuerzas_parcialesY[idN + cuerpo2] -= dif_Y;
+			fuerzas_parcialesZ[idN + cuerpo2] -= dif_Z;
 		}
 	}
 }
@@ -148,8 +152,9 @@ void moverCuerpos(cuerpo_t *cuerpos, int N, int dt){
 // N - subN * (idW)
 
 void sumarFuerzasParciales(int id){
-    int colIni=N*id/CP;
-    int colFin=N*(id+1)/CP;
+	int total = subN * (T - idW);
+    int colIni=total*id/CP;
+    int colFin=total*(id+1)/CP;
     int i,j;
     for(i=colIni;i<colFin;i++){
         for(j=0;j<CP;j++){
@@ -198,7 +203,7 @@ void funcionProcesoA(){
 	//levantar barrera de pthreads para procesamiento local
 
 	for(int j=id + 1;j<T;j++){
-		MPI_Recv(cuerpos_recibidos + subN*(j-id-1),subN*sizeof(cuerpo_t),MPI_BYTE,j,0,MPI_COMM_WORLD,MPI_Status *status); //SOLUCIONAR MPI_REQUEST
+		MPI_Recv(cuerpos + subN*(j-idW + 1),subN*sizeof(cuerpo_t),MPI_BYTE,j,0,MPI_COMM_WORLD,MPI_Status *status); //SOLUCIONAR MPI_REQUEST
 	}
 
 	//levanto barrera de pthreads para procesamiento total
@@ -206,9 +211,9 @@ void funcionProcesoA(){
 	//SOLUCION A
 
 	for(int j=idW + 1;j<T;j++){
-		MPI_Isend(fuerza_totalX + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
-		MPI_Isend(fuerza_totalY + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
-		MPI_Isend(fuerza_totalZ + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
+		MPI_Isend(fuerza_totalX + subN*(j-idW + 1),subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
+		MPI_Isend(fuerza_totalY + subN*(j-idW + 1),subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
+		MPI_Isend(fuerza_totalZ + subN*(j-idW + 1),subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
 	}
 
 	//HABRIA QUE CREAR UNA MATRIZ DE FUERZAS
@@ -222,10 +227,10 @@ void funcionProcesoA(){
 
 	//SOLUCION B
 
-	for(int j = 0;j<T;j++){
-		MPI_Reduce(fuerza_totalX + subN*j, fuerza_totalX + subN*j, subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
-		MPI_Reduce(fuerza_totalY + subN*j, fuerza_totalY + subN*j, subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
-		MPI_Reduce(fuerza_totalZ + subN*j, fuerza_totalZ + subN*j, subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+	for(int j = idW;j<T;j++){
+		MPI_Reduce(fuerza_totalX + subN*(j-idW + 1), fuerza_totalX + subN*(j-idW + 1), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalY + subN*(j-idW + 1), fuerza_totalY + subN*(j-idW + 1), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalZ + subN*(j-idW + 1), fuerza_totalZ + subN*(j-idW + 1), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
 	}
 
 
@@ -354,14 +359,14 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 		cuerpos[1].vz = 0.0;
 }
 void inicializarMemoria(){
-    cuerpos = (cuerpo_t*)malloc(sizeof(cuerpo_t)*subN);
-	cuerpos_recibidos=(cuerpo_t*)malloc(sizeof(cuerpo_t)*N);
-    fuerza_totalX = (float*)malloc(sizeof(float)*N);
-    fuerza_totalY = (float*)malloc(sizeof(float)*N);
-    fuerza_totalZ = (float*)malloc(sizeof(float)*N);
-    fuerzas_parcialesX = (float*)malloc(sizeof(float))*N*CP;
-    fuerzas_parcialesY = (float*)malloc(sizeof(float))*N*CP;
-    fuerzas_parcialesZ = (float*)malloc(sizeof(float))*N*CP;
+    int indice = subN * (T - idW);
+    cuerpos=(cuerpo_t*)malloc(sizeof(cuerpo_t)*indice);
+    fuerza_totalX = (float*)malloc(sizeof(float)*indice);
+    fuerza_totalY = (float*)malloc(sizeof(float)*indice);
+    fuerza_totalZ = (float*)malloc(sizeof(float)*indice);
+    fuerzas_parcialesX = (float*)malloc(sizeof(float)*indice*CP);
+    fuerzas_parcialesY = (float*)malloc(sizeof(float)*indice*CP);
+    fuerzas_parcialesZ = (float*)malloc(sizeof(float)*indice*CP);
 }
 
 void finalizar(void){
