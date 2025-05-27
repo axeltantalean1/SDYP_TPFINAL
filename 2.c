@@ -64,10 +64,12 @@ float toroide_lado;
 float toroide_r;
 float toroide_R;
 
-cuerpo_t *cuerpos *cuerpos_recibidos;
+cuerpo_t *cuerpos, *cuerpos_recibidos;
 int dt = 1.0f; //Intervalo de tiempo, longitud de un paso
 int pasos;
 int N;
+int idW;
+int subN;
 int CP;
 int T;
 pthread_barrier_t barrier;
@@ -76,34 +78,40 @@ pthread_barrier_t barrier;
 // Funciones para Algoritmo de gravitacion
 //
 
-void calcularFuerzas(int id,int N, cuerpos_t *cuerpos){
+//rango va a ser de 0 a subN 
+// N/T * (idW + 1) a N
+
+
+void calcularFuerzas(int id,int length, cuerpos_t *cuerpos, cuerpos_t *cuerpos2){
     int cuerpo1, cuerpo2,idN;
     float dif_X, dif_Y, dif_Z;
     float distancia;
     float F;
     idN=id*N;
-	for(cuerpo1 = N*idW/T + id; cuerpo1<N*(idW+1)/T - 1 ; cuerpo1+CP){
-		for(cuerpo2 = cuerpo1 + 1; cuerpo2<N ; cuerpo2++){
+	for(cuerpo1 = id; cuerpo1< subN ; cuerpo1+CP){
+		for(cuerpo2 = subN * (idW + 1); cuerpo2< length ; cuerpo2++){
 			if ( (cuerpos[cuerpo1].px == cuerpos[cuerpo2].px) && (cuerpos[cuerpo1].py == cuerpos[cuerpo2].py) && (cuerpos[cuerpo1].pz == cuerpos[cuerpo2].pz))
                 continue;
 
-            dif_X = cuerpos[cuerpo2].px - cuerpos[cuerpo1].px;
-            dif_Y = cuerpos[cuerpo2].py - cuerpos[cuerpo1].py;
-            dif_Z = cuerpos[cuerpo2].pz - cuerpos[cuerpo1].pz;
+            dif_X = cuerpos2[cuerpo2].px - cuerpos[cuerpo1].px;
+            dif_Y = cuerpos2[cuerpo2].py - cuerpos[cuerpo1].py;
+            dif_Z = cuerpos2[cuerpo2].pz - cuerpos[cuerpo1].pz;
             distancia = sqrt(dif_X*dif_X + dif_Y*dif_Y + dif_Z*dif_Z);
 
-            F = (G*cuerpos[cuerpo1].masa*cuerpos[cuerpo2].masa)/(distancia*distancia);
+            F = (G*cuerpos[cuerpo1].masa*cuerpos2[cuerpo2].masa)/(distancia*distancia);
             dif_X *= F;
             dif_Y *= F;
             dif_Z *= F;
 
-            fuerzas_parcialesX[idN+cuerpo1] += dif_X;
-            fuerzas_parcialesY[idN+cuerpo1] += dif_Y;
-            fuerzas_parcialesZ[idN+cuerpo1] += dif_Z;
+            int index = idN+(cuerpo1 + subN * idW);
+            fuerzas_parcialesX[index] += dif_X;
+            fuerzas_parcialesY[index] += dif_Y;
+            fuerzas_parcialesZ[index] += dif_Z;
 
-            fuerzas_parcialesX[idN+cuerpo2] -= dif_X;
-            fuerzas_parcialesY[idN+cuerpo2] -= dif_Y;
-            fuerzas_parcialesZ[idN+cuerpo2] -= dif_Z;
+			int indexCuerpo2 = idN+cuerpo2;
+			fuerzas_parcialesX[indexCuerpo2] -= dif_X;
+			fuerzas_parcialesY[indexCuerpo2] -= dif_Y;
+			fuerzas_parcialesZ[indexCuerpo2] -= dif_Z;
 		}
 	}
 }
@@ -133,6 +141,12 @@ void moverCuerpos(cuerpo_t *cuerpos, int N, int dt){
     	}
 }
 
+// inicio global subN * idW
+// fin global N
+
+
+// N - subN * (idW)
+
 void sumarFuerzasParciales(int id){
     int colIni=N*id/CP;
     int colFin=N*(id+1)/CP;
@@ -147,11 +161,19 @@ void sumarFuerzasParciales(int id){
 }
 
 void gravitacionCPU(int id){
-    calcularFuerzas(id);
-    pthread_barrier_wait(&barrier);
-    sumarFuerzasParciales(id);
+	//Barrera para empezar
+    calcularFuerzas(id, subN, cuerpos, cuerpos);
+    pthread_barrier_wait(&barrier); //barrera para esperar el resto de posiciones
+	calcularFuerzas(id, subN, cuerpos, cuerpos_recibidos); // barrera para esperar que todos terminen 
+	pthread_barrier_wait(&barrier); // barrera para esperar que todos terminen sus fuerzas
+	sumarFuerzasParciales(id);
+	pthread_barrier_wait(&barrier); // Le avisamos que tenemos todas las fuerzas al "root"
+	pthread_barrier_wait(&barrier); //barrera de comunicacion
+	//sumarFuerzasParciales(id);
+	//pthread_barrier_wait(&barrier); // barrera para esperar que todos terminen sus fuersza
 	moverCuerpos(id);
-    pthread_barrier_wait(&barrier);
+	pthread_barrier_wait(&barrier); // avisar que todos los cuerpos se han movido
+
 }
 
 void *funcionThread(void *arg){
@@ -168,15 +190,47 @@ void *funcionThread(void *arg){
 
 void funcionProcesoA(){
 	
-    MPI_Bcast(cuerpos,N*sizeof(),idW,world);
-	
 
+	for (int i=0 ;i<idW;i++){
+		MPI_Isend(cuerpos,subN*sizeof(cuerpo_t),MPI_BYTE,i,0,MPI_COMM_WORLD,MPI_Request *req); //SOLUCIONAR MPI_REQUEST
+	}
+
+	//levantar barrera de pthreads para procesamiento local
+
+	for(int j=id + 1;j<T;j++){
+		MPI_Recv(cuerpos_recibidos + subN*(j-id-1),subN*sizeof(cuerpo_t),MPI_BYTE,j,0,MPI_COMM_WORLD,MPI_Status *status); //SOLUCIONAR MPI_REQUEST
+	}
+
+	//levanto barrera de pthreads para procesamiento total
+
+	//SOLUCION A
+
+	for(int j=idW + 1;j<T;j++){
+		MPI_Isend(fuerza_totalX + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
+		MPI_Isend(fuerza_totalY + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
+		MPI_Isend(fuerza_totalZ + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD);
+	}
+
+	//HABRIA QUE CREAR UNA MATRIZ DE FUERZAS
+	for(int j=0 ;j<idW;j++){
+		MPI_Recv(fuerza_totalX + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD,MPI_Status *status); //Ver el tema de status
+		MPI_Recv(fuerza_totalY + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD,MPI_Status *status);
+		MPI_Recv(fuerza_totalZ + subN*j,subN*sizeof(float),MPI_FLOAT,j,0,MPI_COMM_WORLD,MPI_Status *status);
+	}
 	
-	for (int i= id + 1 ;i<T;i++){
-		MPI_Bcast()
+	//Levantar barrera para hacer la suma de fuerzas
+
+	//SOLUCION B
+
+	for(int j = 0;j<T;j++){
+		MPI_Reduce(fuerza_totalX + subN*j, fuerza_totalX + subN*j, subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalY + subN*j, fuerza_totalY + subN*j, subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalZ + subN*j, fuerza_totalZ + subN*j, subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
 	}
 
 
+	//Levantar barrera para mover cuerpos
+	
 
 }
 
@@ -300,8 +354,8 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 		cuerpos[1].vz = 0.0;
 }
 void inicializarMemoria(){
-    cuerpos = (cuerpo_t*)malloc(sizeof(cuerpo_t)*N/T);
-	cuerpos_recibidos=(cuerpo_t*)malloc(sizeof(cuerpo_t)*N/T*(T-idW-1));
+    cuerpos = (cuerpo_t*)malloc(sizeof(cuerpo_t)*subN);
+	cuerpos_recibidos=(cuerpo_t*)malloc(sizeof(cuerpo_t)*N);
     fuerza_totalX = (float*)malloc(sizeof(float)*N);
     fuerza_totalY = (float*)malloc(sizeof(float)*N);
     fuerza_totalZ = (float*)malloc(sizeof(float)*N);
@@ -325,7 +379,7 @@ void finalizar(void){
 void procesoA(){
     int i;
     for(i=0;i<pasos;i++){
-        MPI
+        funcionProcesoA();
     }
 
 }
@@ -340,6 +394,7 @@ int main(int argc, char * argv[]) {
 	dt = atof(argv[2]);
 	pasos = atoi(argv[3]);
     CP = atoi(argv[4]);
+	subN = N/T;
 
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD,&idW);
@@ -351,13 +406,6 @@ int main(int argc, char * argv[]) {
     else{
 
     }
-
-
-
-
-
-    
-
 
 	pthread_t misThreads[CP];
     pthread_barrier_init(&barrier,NULL,CP);
