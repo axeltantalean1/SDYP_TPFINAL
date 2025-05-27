@@ -120,10 +120,10 @@ void calcularFuerzas(int id,int length, cuerpos_t *cuerpos, int isLocal){
 	}
 }
 
-void moverCuerpos(cuerpo_t *cuerpos, int N, int dt){
+void moverCuerpos(cuerpo_t *cuerpos, int length, int dt){
     int cuerpo;
-    int ini=id*N/CP;
-    int fin=N*(id+1)/CP;
+    int ini=id*length/CP;
+    int fin=length*(id+1)/CP;
 	for(cuerpo=ini;cuerpo<fin;cuerpo++){
 
         fuerza_totalX[cuerpo] *= 1/cuerpos[cuerpo].masa;
@@ -167,16 +167,16 @@ void sumarFuerzasParciales(int id){
 
 void gravitacionCPU(int id){
 	//Barrera para empezar
-    calcularFuerzas(id, subN, cuerpos, cuerpos);
+    calcularFuerzas(id, subN, cuerpos, 1);
     pthread_barrier_wait(&barrier); //barrera para esperar el resto de posiciones
-	calcularFuerzas(id, subN, cuerpos, cuerpos_recibidos); // barrera para esperar que todos terminen 
+	calcularFuerzas(id, N, cuerpos, 0); // barrera para esperar que todos terminen 
 	pthread_barrier_wait(&barrier); // barrera para esperar que todos terminen sus fuerzas
 	sumarFuerzasParciales(id);
 	pthread_barrier_wait(&barrier); // Le avisamos que tenemos todas las fuerzas al "root"
 	pthread_barrier_wait(&barrier); //barrera de comunicacion
 	//sumarFuerzasParciales(id);
 	//pthread_barrier_wait(&barrier); // barrera para esperar que todos terminen sus fuersza
-	moverCuerpos(id);
+	moverCuerpos(id, subN, dt);
 	pthread_barrier_wait(&barrier); // avisar que todos los cuerpos se han movido
 
 }
@@ -413,7 +413,7 @@ int main(int argc, char * argv[]) {
     }
 
 	pthread_t misThreads[CP];
-    pthread_barrier_init(&barrier,NULL,CP);
+    pthread_barrier_init(&barrier,NULL,CP + 1);
 
 	inicializarCuerpos(cuerpos,N);
 	
