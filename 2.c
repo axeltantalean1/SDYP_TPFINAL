@@ -6,6 +6,7 @@
 #include <sys/time.h>
 #include <pthread.h>
 #include <mpi.h>
+#include <string.h>
 
 //
 // Para tiempo de ejecucion
@@ -76,6 +77,9 @@ pthread_barrier_t barrier;
 //
 // Funciones para Algoritmo de gravitacion
 //
+ 
+
+
 
 void calcularFuerzas(int id){
     int cuerpo1, cuerpo2,idN;
@@ -84,7 +88,8 @@ void calcularFuerzas(int id){
     float F;
     idN=id*N;
 	int ini = N/T * idW + id;
-	for(cuerpo1 = ini; cuerpo1 < N; cuerpo1+=CP){
+	int fin = N/T * (idW + 1);
+	for(cuerpo1 = ini; cuerpo1 < fin; cuerpo1+=CP){
 		for(cuerpo2 = cuerpo1 + 1; cuerpo2 < N; cuerpo2++){
 			if ( (cuerpos[cuerpo1].px == cuerpos[cuerpo2].px) && (cuerpos[cuerpo1].py == cuerpos[cuerpo2].py) && (cuerpos[cuerpo1].pz == cuerpos[cuerpo2].pz))
                 continue;
@@ -93,6 +98,7 @@ void calcularFuerzas(int id){
             dif_Y = cuerpos[cuerpo2].py - cuerpos[cuerpo1].py;
             dif_Z = cuerpos[cuerpo2].pz - cuerpos[cuerpo1].pz;
             distancia = sqrt(dif_X*dif_X + dif_Y*dif_Y + dif_Z*dif_Z);
+            if (distancia < 1e-5) continue;  // Avoid division by zero
 
             F = (G*cuerpos[cuerpo1].masa*cuerpos[cuerpo2].masa)/(distancia*distancia);
             dif_X *= F;
@@ -140,9 +146,10 @@ void moverCuerpos(cuerpo_t *cuerpos, int N, int dt,int id){
 }
 
 void sumarFuerzasParciales(int id){
+	int total = N - (N/T * idW);
 	int offset = N/T * idW;
-    int ini= offset + id*subN/CP;
-	int fin = offset + (id+1)*subN/CP;
+    int ini= offset + id*total/CP;
+	int fin = offset + (id+1)*total/CP;
     int i,j;
     for(i=ini;i<fin;i++){
         for(j=0;j<CP;j++){
@@ -155,6 +162,8 @@ void sumarFuerzasParciales(int id){
         }
     }
 }
+
+
 
 void gravitacionCPU(int id){
     calcularFuerzas(id);
@@ -174,11 +183,10 @@ void gravitacionCPU(int id){
     moverCuerpos(cuerpos,N,dt,id);
     pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE MUEVAN LOS CUERPOS
     
-    // All processes must participate in the gather
 	if(id == 0){
 		MPI_Allgather(
 			cuerpos + subN * idW, subN * sizeof(cuerpo_t), MPI_BYTE,
-			cuerpos, subN * sizeof(cuerpo_t), MPI_BYTE,
+			cuerpos, subN * sizeof(cuerpo_t), MPI_BYTE, 
 			MPI_COMM_WORLD
 		);
 	}
@@ -297,13 +305,7 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 
 	}
 
-		//cuerpos[0].masa = 2.0e2;
-	        cuerpos[0].px = 0.0;
-		cuerpos[0].py = 0.0;
-		cuerpos[0].pz = 0.0;
-		cuerpos[0].vx = -0.000001;
-		cuerpos[0].vy = -0.000001;
-		cuerpos[0].vz = 0.0;
+
 /*
 		cuerpos[1].masa = 1.0e1;
 	        cuerpos[1].px = -1.0;
@@ -366,6 +368,7 @@ int main(int argc, char * argv[]) {
     tIni = dwalltime(); 
 
 	MPI_Bcast(cuerpos, N * sizeof(cuerpo_t), MPI_BYTE, 0, MPI_COMM_WORLD);
+
 
     for(int id=0;id<CP;id++){
 
