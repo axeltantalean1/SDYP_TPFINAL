@@ -228,9 +228,9 @@ void funcionProcesoA(){
 	//SOLUCION B
 
 	for(int j = idW;j<T;j++){
-		MPI_Reduce(fuerza_totalX + subN*(j-idW + 1), fuerza_totalX + subN*(j-idW + 1), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
-		MPI_Reduce(fuerza_totalY + subN*(j-idW + 1), fuerza_totalY + subN*(j-idW + 1), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
-		MPI_Reduce(fuerza_totalZ + subN*(j-idW + 1), fuerza_totalZ + subN*(j-idW + 1), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalX + subN*(j-idW), fuerza_totalX + subN*(j-idW), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalY + subN*(j-idW), fuerza_totalY + subN*(j-idW), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
+		MPI_Reduce(fuerza_totalZ + subN*(j-idW), fuerza_totalZ + subN*(j-idW), subN, MPI_FLOAT, MPI_SUM, j, MPI_COMM_WORLD);
 	}
 
 
