@@ -1,8 +1,3 @@
-// Compilar:
-//		gcc -o n_body_simple_NOGL n_body_simple.c -lm
-// Ejecutar:
-//		./n_body_simple_NOGL <nro de cuerpos> <DT> <Pasos>
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -162,30 +157,33 @@ void sumarFuerzasParciales(int id){
 }
 
 void gravitacionCPU(int id){
-    
     calcularFuerzas(id);
-
     pthread_barrier_wait(&barrier);
 
     sumarFuerzasParciales(id);
-	pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE SUMEN LAS FUERZAS
+    pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE SUMEN LAS FUERZAS
+    
 	if(id == 0){
-		MPI_Bcast(cuerpos, N * sizeof(cuerpo_t), MPI_BYTE, 0, MPI_COMM_WORLD); //BROADCAST DE LAS FUERZAS TENDRIAN QUE SER LAS FUERZAS (HABRIA QUE MANDAR Y RECIBIR)
+    // All processes must participate in the reduction
+		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalX, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalY, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
+		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalZ, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 	}
-	pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A que se envien y reciban las fuerzas
-	moverCuerpos(cuerpos,N,dt,id);
+    pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A que se envien y reciban las fuerzas
+    
+    moverCuerpos(cuerpos,N,dt,id);
     pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE MUEVAN LOS CUERPOS
-	// En vez de un MPI_Bcast, se puede usar un MPI_Gather si se quiere recolectar las posiciones finales en un solo proceso (por ejemplo, el root).
-	// Ejemplo de uso de MPI_Gather para recolectar los cuerpos en el proceso 0:
-	if (id == 0) {
+    
+    // All processes must participate in the gather
+	if(id == 0){
 		MPI_Allgather(
 			cuerpos + subN * idW, subN * sizeof(cuerpo_t), MPI_BYTE,
 			cuerpos, subN * sizeof(cuerpo_t), MPI_BYTE,
 			MPI_COMM_WORLD
 		);
-		// Ahora, en el proceso root (idW == 0), el arreglo 'cuerpos' contiene todos los cuerpos.
 	}
-	pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A que se envien posiciones finales
+    
+    pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A que se envien posiciones finales
 }
 
 void *funcionThread(void *arg){
@@ -198,7 +196,7 @@ void *funcionThread(void *arg){
 
 void inicializarEstrella(cuerpo_t *cuerpo,int i,double n){
 
-    cuerpo->masa = 10000*8; 
+    cuerpo->masa = 0.001*8; 
 
         if ((toroide_alfa + toroide_incremento) >=2*M_PI){
             toroide_alfa = 0;
@@ -336,12 +334,20 @@ int main(int argc, char * argv[]) {
 		return -1;
 	}
 
-	N = atoi(argv[1]);
-	dt = atof(argv[2]);
-	pasos = atoi(argv[3]);
+    N = atoi(argv[1]);
+    dt = atof(argv[2]);
+    pasos = atoi(argv[3]);
     CP = atoi(argv[4]);
 
-	pthread_t misThreads[CP];
+    // Initialize MPI first
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD,&idW);
+    MPI_Comm_size(MPI_COMM_WORLD,&T);
+    
+    // Calculate subN after MPI is initialized
+    subN = N/T;
+
+    pthread_t misThreads[CP];
     pthread_barrier_init(&barrier,NULL,CP);
 
     cuerpos = (cuerpo_t*)malloc(sizeof(cuerpo_t)*N);
@@ -352,15 +358,12 @@ int main(int argc, char * argv[]) {
     fuerzas_parcialesY = (float*)calloc(N*CP,sizeof(float));
     fuerzas_parcialesZ = (float*)calloc(N*CP,sizeof(float));
 
-	subN = N/T;
+    // Only process 0 initializes the bodies
+    if (idW == 0) {
+        inicializarCuerpos(cuerpos,N);
+    }
 
-    MPI_Init(&argc, &argv);
-    MPI_Comm_rank(MPI_COMM_WORLD,&idW);
-    MPI_Comm_size(MPI_COMM_WORLD,&T);
-
-	inicializarCuerpos(cuerpos,N);
-
-	tIni = dwalltime(); 
+    tIni = dwalltime(); 
 
 	MPI_Bcast(cuerpos, N * sizeof(cuerpo_t), MPI_BYTE, 0, MPI_COMM_WORLD);
 
@@ -373,19 +376,19 @@ int main(int argc, char * argv[]) {
 		pthread_join(misThreads[id],NULL);
 	}
 
-	tFin =	dwalltime();
-	tTotal = tFin - tIni;
-	
-	printf("Tiempo en segundos: %f\n",tTotal);
+    tFin = dwalltime();
+    tTotal = tFin - tIni;
+    
+    if (idW == 0) {
+        printf("Tiempo en segundos: %f\n",tTotal);
+        printf("\nPosiciones finales de los cuerpos:\n");
+        for(int i = 0; i < N; i++) {
+            printf("Cuerpo %d: px=%.6f py=%.6f pz=%.6f\n", 
+                i, cuerpos[i].px, cuerpos[i].py, cuerpos[i].pz);
+        }
+    }
 
-	if (idW == 0) {
-		printf("\nPosiciones finales de los cuerpos:\n");
-		for(int i = 0; i < N; i++) {
-			printf("Cuerpo %d: px=%.6f py=%.6f pz=%.6f\n", 
-				i, cuerpos[i].px, cuerpos[i].py, cuerpos[i].pz);
-		}
-	}
-	finalizar();
+    finalizar();
+    MPI_Finalize();
     return(0);
-
 }
