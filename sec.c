@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <math.h>
 #include <sys/time.h>
-#include <pthread.h>
 
 //
 // Para tiempo de ejecucion
@@ -58,7 +57,7 @@ struct cuerpo{
 	int cuerpo;
 };
 
-float *fuerza_totalX,*fuerza_totalY, *fuerza_totalZ, *fuerzas_parcialesX,*fuerzas_parcialesY,*fuerzas_parcialesZ;
+float *fuerza_totalX,*fuerza_totalY, *fuerza_totalZ;
 float toroide_alfa;
 float toroide_theta;
 float toroide_incremento;
@@ -67,117 +66,79 @@ float toroide_r;
 float toroide_R;
 
 cuerpo_t *cuerpos;
-int dt = 1.0f; //Intervalo de tiempo, longitud de un paso
+int delta_tiempo = 1.0f; //Intervalo de tiempo, longitud de un paso
 int pasos;
 int N;
-int CP;
-
-pthread_barrier_t barrier;
 
 //
 // Funciones para Algoritmo de gravitacion
 //
 
-void calcularFuerzas(int id){
-    int cuerpo1, cuerpo2,idN;
-    float dif_X, dif_Y, dif_Z;
-    float distancia;
-    float F;
-    idN=id*N;
-	for(cuerpo1 = id; cuerpo1 < N; cuerpo1+=CP){
-		for(cuerpo2 = cuerpo1 + 1; cuerpo2 < N; cuerpo2++){
-			if(cuerpo2 <= cuerpo1) continue; // Skip redundant calculations
+void calcularFuerzas(cuerpo_t *cuerpos, int N, int dt){
+int cuerpo1, cuerpo2;
+float dif_X, dif_Y, dif_Z;
+float distancia;
+float F;
+
+	for(cuerpo1 = 0; cuerpo1<N-1 ; cuerpo1++){
+		for(cuerpo2 = cuerpo1 + 1; cuerpo2<N ; cuerpo2++){
 			if ( (cuerpos[cuerpo1].px == cuerpos[cuerpo2].px) && (cuerpos[cuerpo1].py == cuerpos[cuerpo2].py) && (cuerpos[cuerpo1].pz == cuerpos[cuerpo2].pz))
                 continue;
 
-            dif_X = cuerpos[cuerpo2].px - cuerpos[cuerpo1].px;
-            dif_Y = cuerpos[cuerpo2].py - cuerpos[cuerpo1].py;
-            dif_Z = cuerpos[cuerpo2].pz - cuerpos[cuerpo1].pz;
-            distancia = sqrt(dif_X*dif_X + dif_Y*dif_Y + dif_Z*dif_Z);
+	            	dif_X = cuerpos[cuerpo2].px - cuerpos[cuerpo1].px;
+			dif_Y = cuerpos[cuerpo2].py - cuerpos[cuerpo1].py;
+			dif_Z = cuerpos[cuerpo2].pz - cuerpos[cuerpo1].pz;
+                
+			distancia = sqrt(dif_X*dif_X + dif_Y*dif_Y + dif_Z*dif_Z);
 
-            F = (G*cuerpos[cuerpo1].masa*cuerpos[cuerpo2].masa)/(distancia*distancia);
-            dif_X *= F;
-            dif_Y *= F;
-            dif_Z *= F;
+	                F = (G*cuerpos[cuerpo1].masa*cuerpos[cuerpo2].masa)/(distancia*distancia);
 
+	                dif_X *= F;
+			dif_Y *= F;
+			dif_Z *= F;
 
-            //Se podria realizar una matriz triangular y ahorrar computo
-            fuerzas_parcialesX[idN+cuerpo1] += dif_X;
-            fuerzas_parcialesY[idN+cuerpo1] += dif_Y;
-            fuerzas_parcialesZ[idN+cuerpo1] += dif_Z;
+	                fuerza_totalX[cuerpo1] += dif_X;
+	                fuerza_totalY[cuerpo1] += dif_Y;
+	                fuerza_totalZ[cuerpo1] += dif_Z;
 
-            fuerzas_parcialesX[idN+cuerpo2] -= dif_X;
-            fuerzas_parcialesY[idN+cuerpo2] -= dif_Y;
-            fuerzas_parcialesZ[idN+cuerpo2] -= dif_Z;
-
+	                fuerza_totalX[cuerpo2] -= dif_X;
+	                fuerza_totalY[cuerpo2] -= dif_Y;
+	                fuerza_totalZ[cuerpo2] -= dif_Z;
 		}
 	}
 }
 
-void moverCuerpos(cuerpo_t *cuerpos, int N, int dt,int id){
-    int cuerpo;
-    int ini=id*N/CP;
-    int fin=N*(id+1)/CP;
-	for(cuerpo=ini;cuerpo<fin;cuerpo++){
+void moverCuerpos(cuerpo_t *cuerpos, int N, int dt){
+ int cuerpo;
+	for(cuerpo = 0; cuerpo<N ; cuerpo++){
 
-        fuerza_totalX[cuerpo] *= 1/cuerpos[cuerpo].masa;
-        fuerza_totalY[cuerpo] *= 1/cuerpos[cuerpo].masa;
-        //fuerza_totalZ[cuerpo] *= 1/cuerpos[cuerpo].masa;
+        	fuerza_totalX[cuerpo] *= 1/cuerpos[cuerpo].masa;
+        	fuerza_totalY[cuerpo] *= 1/cuerpos[cuerpo].masa;
+        	//fuerza_totalZ[cuerpo] *= 1/cuerpos[cuerpo].masa;
 
-        cuerpos[cuerpo].vx += fuerza_totalX[cuerpo]*dt;
-        cuerpos[cuerpo].vy += fuerza_totalY[cuerpo]*dt;
-        //cuerpos[cuerpo].vz += fuerza_totalZ[cuerpo]*dt;
+        	cuerpos[cuerpo].vx += fuerza_totalX[cuerpo]*dt;
+        	cuerpos[cuerpo].vy += fuerza_totalY[cuerpo]*dt;
+        	//cuerpos[cuerpo].vz += fuerza_totalZ[cuerpo]*dt;
 
-        cuerpos[cuerpo].px += cuerpos[cuerpo].vx *dt;
-        cuerpos[cuerpo].py += cuerpos[cuerpo].vy *dt;
-        //cuerpos[cuerpo].pz += cuerpos[cuerpo].vz *dt;
+        	cuerpos[cuerpo].px += cuerpos[cuerpo].vx *dt;
+        	cuerpos[cuerpo].py += cuerpos[cuerpo].vy *dt;
+        	//cuerpos[cuerpo].pz += cuerpos[cuerpo].vz *dt;
 
-        fuerza_totalX[cuerpo] = 0.0;
+        	fuerza_totalX[cuerpo] = 0.0;
 		fuerza_totalY[cuerpo] = 0.0;
 		fuerza_totalZ[cuerpo] = 0.0;
 
     	}
 }
 
-void sumarFuerzasParciales(int id){
-    int colIni=N*id/CP;
-    int colFin=N*(id+1)/CP;
-    int i,j;
-    for(i=colIni;i<colFin;i++){
-        for(j=0;j<CP;j++){
-            fuerza_totalX[i]+=fuerzas_parcialesX[j*N+i];
-            fuerza_totalY[i]+=fuerzas_parcialesY[j*N+i];
-            fuerza_totalZ[i]+=fuerzas_parcialesZ[j*N+i];
-			fuerzas_parcialesX[j*N+i] = 0;
-			fuerzas_parcialesY[j*N+i] = 0;
-			fuerzas_parcialesZ[j*N+i] = 0;
-        }
-    }
-}
-
-void gravitacionCPU(int id){
-
-    calcularFuerzas(id);
-
-    pthread_barrier_wait(&barrier);
-
-    sumarFuerzasParciales(id);
-	moverCuerpos(cuerpos,N,dt,id);
-    pthread_barrier_wait(&barrier);
-
-}
-
-void *funcionThread(void *arg){
-    int id = (int)arg;
-	int paso;
-	for(paso=0; paso<pasos; paso++){
-		gravitacionCPU(id);
-	}    
+void gravitacionCPU(cuerpo_t *cuerpos, int N, int dt){
+	calcularFuerzas(cuerpos,N,dt);
+	moverCuerpos(cuerpos,N,dt);
 }
 
 void inicializarEstrella(cuerpo_t *cuerpo,int i,double n){
 
-    cuerpo->masa = 10000*8; 
+    cuerpo->masa = 10000*8;
 
         if ((toroide_alfa + toroide_incremento) >=2*M_PI){
             toroide_alfa = 0;
@@ -261,12 +222,12 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 	srand(time(NULL));
 
 	for(cuerpo = 0; cuerpo < N; cuerpo++){
-	
+
         fuerza_totalX[cuerpo] = 0.0;
 		fuerza_totalY[cuerpo] = 0.0;
 		fuerza_totalZ[cuerpo] = 0.0;
 
-		cuerpos[cuerpo].cuerpo = 0;//(rand() %3);
+		cuerpos[cuerpo].cuerpo = ESTRELLA;
 
 		if (cuerpos[cuerpo].cuerpo == ESTRELLA){
 			inicializarEstrella(&cuerpos[cuerpo],cuerpo,n);
@@ -278,14 +239,14 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 
 	}
 
-		//cuerpos[0].masa = 2.0e2;
+		cuerpos[0].masa = 2.0e2;
 	        cuerpos[0].px = 0.0;
 		cuerpos[0].py = 0.0;
 		cuerpos[0].pz = 0.0;
 		cuerpos[0].vx = -0.000001;
 		cuerpos[0].vy = -0.000001;
 		cuerpos[0].vz = 0.0;
-/*
+
 		cuerpos[1].masa = 1.0e1;
 	        cuerpos[1].px = -1.0;
 		cuerpos[1].py = 0.0;
@@ -293,7 +254,6 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 		cuerpos[1].vx = 0.0;
 		cuerpos[1].vy = 0.0001;
 		cuerpos[1].vz = 0.0;
-*/
 }
 
 void finalizar(void){
@@ -301,47 +261,31 @@ void finalizar(void){
 	free(fuerza_totalX);
 	free(fuerza_totalY);
 	free(fuerza_totalZ);
-    free(fuerzas_parcialesX);
-    free(fuerzas_parcialesY);
-    free(fuerzas_parcialesZ);
-    pthread_barrier_destroy(&barrier);
 }
-
 
 int main(int argc, char * argv[]) {
 
-	if (argc < 5){
-		printf("Ejecutar: %s <nro. de cuerpos> <DT> <pasos> <cant procesos>\n",argv[0]);
+	if (argc < 4){
+		printf("Ejecutar: %s <nro. de cuerpos> <DT> <pasos>\n",argv[0]);
 		return -1;
 	}
-
+	
 	N = atoi(argv[1]);
-	dt = atof(argv[2]);
+	delta_tiempo = atof(argv[2]);
 	pasos = atoi(argv[3]);
-    CP = atoi(argv[4]);
-
-	pthread_t misThreads[CP];
-    pthread_barrier_init(&barrier,NULL,CP);
-
-    cuerpos = (cuerpo_t*)malloc(sizeof(cuerpo_t)*N);
-    fuerza_totalX = (float*)calloc(N,sizeof(float));
-    fuerza_totalY = (float*)calloc(N,sizeof(float));
-    fuerza_totalZ = (float*)calloc(N,sizeof(float));
-    fuerzas_parcialesX = (float*)calloc(N*CP,sizeof(float));
-    fuerzas_parcialesY = (float*)calloc(N*CP,sizeof(float));
-    fuerzas_parcialesZ = (float*)calloc(N*CP,sizeof(float));
+	
+	cuerpos = (cuerpo_t*)malloc(sizeof(cuerpo_t)*N);
+	fuerza_totalX = (float*)malloc(sizeof(float)*N);
+	fuerza_totalY = (float*)malloc(sizeof(float)*N);
+	fuerza_totalZ = (float*)malloc(sizeof(float)*N);
 
 	inicializarCuerpos(cuerpos,N);
-
-	tIni = dwalltime(); 
-
-    for(int id=0;id<CP;id++){
-
-		pthread_create(&misThreads[id],NULL,&funcionThread,(void*)id);
-	}
 	
-	for(int id=0; id<CP;id++){
-		pthread_join(misThreads[id],NULL);
+	tIni = dwalltime(); 
+	
+	int paso;
+	for(paso=0; paso<pasos; paso++){
+		gravitacionCPU(cuerpos,N,delta_tiempo);
 	}
 
 	tFin =	dwalltime();
