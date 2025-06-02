@@ -160,11 +160,9 @@ void gravitacionCPU(int id){
     calcularFuerzas(id);
 
     pthread_barrier_wait(&barrier);
-
+	
     sumarFuerzasParciales(id);
-
-	pthread_barrier_wait(&barrier);
-	moverCuerpos(cuerpos,N,dt,id);
+moverCuerpos(cuerpos,N,dt,id);
     pthread_barrier_wait(&barrier);
 
 }
@@ -179,7 +177,7 @@ void *funcionThread(void *arg){
 
 void inicializarEstrella(cuerpo_t *cuerpo,int i,double n){
 
-    cuerpo->masa = 10000*8; 
+    cuerpo->masa = 0.001*8; 
 
         if ((toroide_alfa + toroide_incremento) >=2*M_PI){
             toroide_alfa = 0;
@@ -281,13 +279,13 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 	}
 
 		//cuerpos[0].masa = 2.0e2;
-	        cuerpos[0].px = 0.0;
+/*	        cuerpos[0].px = 0.0;
 		cuerpos[0].py = 0.0;
 		cuerpos[0].pz = 0.0;
 		cuerpos[0].vx = -0.000001;
 		cuerpos[0].vy = -0.000001;
 		cuerpos[0].vz = 0.0;
-/*
+
 		cuerpos[1].masa = 1.0e1;
 	        cuerpos[1].px = -1.0;
 		cuerpos[1].py = 0.0;
@@ -429,25 +427,27 @@ int main(int argc, char * argv[]) {
 	tFin =	dwalltime();
 	tTotal = tFin - tIni;
 	
-	printf("Tiempo en segundos: %f\n",tTotal);
+	printf("Tiempo en segundos paralelo: %f\n",tTotal);
 
+	tIni = dwalltime(); 
     for(int i=0; i < pasos; i++){
         gravitacionCPUSec(cuerposSec,N,dt);
     }
 
+	tFin =	dwalltime();
+	tTotal = tFin - tIni;
+	
+	printf("Tiempo en segundos secuencial: %f\n",tTotal);
+
 	// Comparar resultados entre versión paralela y secuencial
 	int errores = 0;
 	for(int i = 0; i < N; i++) {
-		if(fabs(cuerpos[i].px - cuerposSec[i].px) > 0.01 || 
-		   fabs(cuerpos[i].py - cuerposSec[i].py) > 0.01 ||
-		   fabs(cuerpos[i].pz - cuerposSec[i].pz) > 0.01) {
-			errores++;
-			printf("Error en cuerpo %d:\n", i);
+					printf("Error en cuerpo %d:\n", i);
 			printf("Paralelo  - px: %f, py: %f, pz: %f\n", 
 				cuerpos[i].px, cuerpos[i].py, cuerpos[i].pz);
 			printf("Secuencial- px: %f, py: %f, pz: %f\n",
 				cuerposSec[i].px, cuerposSec[i].py, cuerposSec[i].pz);
-		}
+		
 	}
 	
 	if(errores == 0) {

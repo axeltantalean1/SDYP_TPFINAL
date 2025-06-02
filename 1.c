@@ -162,7 +162,8 @@ void gravitacionCPU(int id){
     pthread_barrier_wait(&barrier);
 
     sumarFuerzasParciales(id);
-	moverCuerpos(cuerpos,N,dt,id);
+	
+    moverCuerpos(cuerpos,N,dt,id);
     pthread_barrier_wait(&barrier);
 
 }
@@ -177,7 +178,7 @@ void *funcionThread(void *arg){
 
 void inicializarEstrella(cuerpo_t *cuerpo,int i,double n){
 
-    cuerpo->masa = 10000*8; 
+    cuerpo->masa = 0.001*8; 
 
         if ((toroide_alfa + toroide_incremento) >=2*M_PI){
             toroide_alfa = 0;
@@ -278,13 +279,6 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 
 	}
 
-		//cuerpos[0].masa = 2.0e2;
-	        cuerpos[0].px = 0.0;
-		cuerpos[0].py = 0.0;
-		cuerpos[0].pz = 0.0;
-		cuerpos[0].vx = -0.000001;
-		cuerpos[0].vy = -0.000001;
-		cuerpos[0].vz = 0.0;
 /*
 		cuerpos[1].masa = 1.0e1;
 	        cuerpos[1].px = -1.0;
@@ -347,7 +341,7 @@ int main(int argc, char * argv[]) {
 	tFin =	dwalltime();
 	tTotal = tFin - tIni;
 	
-	printf("Tiempo en segundos: %f\n",tTotal);
+	printf("Tiempo en segundos paralelo: %f\n",tTotal);
 
 	printf("\nPosiciones finales de los cuerpos:\n");
 	for(int i = 0; i < N; i++) {
