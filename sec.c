@@ -138,7 +138,7 @@ void gravitacionCPU(cuerpo_t *cuerpos, int N, int dt){
 
 void inicializarEstrella(cuerpo_t *cuerpo,int i,double n){
 
-    cuerpo->masa = 10000*8;
+    cuerpo->masa = 0.001*8;
 
         if ((toroide_alfa + toroide_incremento) >=2*M_PI){
             toroide_alfa = 0;
@@ -239,21 +239,6 @@ void inicializarCuerpos(cuerpo_t *cuerpos,int N){
 
 	}
 
-		cuerpos[0].masa = 2.0e2;
-	        cuerpos[0].px = 0.0;
-		cuerpos[0].py = 0.0;
-		cuerpos[0].pz = 0.0;
-		cuerpos[0].vx = -0.000001;
-		cuerpos[0].vy = -0.000001;
-		cuerpos[0].vz = 0.0;
-
-		cuerpos[1].masa = 1.0e1;
-	        cuerpos[1].px = -1.0;
-		cuerpos[1].py = 0.0;
-		cuerpos[1].pz = 0.0;
-		cuerpos[1].vx = 0.0;
-		cuerpos[1].vy = 0.0001;
-		cuerpos[1].vz = 0.0;
 }
 
 void finalizar(void){

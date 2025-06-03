@@ -91,6 +91,7 @@ void calcularFuerzas(int id){
 	int fin = N/T * (idW + 1);
 	for(cuerpo1 = ini; cuerpo1 < fin; cuerpo1+=CP){
 		for(cuerpo2 = cuerpo1 + 1; cuerpo2 < N; cuerpo2++){
+			if(cuerpo2 <= cuerpo1) continue;
 			if ( (cuerpos[cuerpo1].px == cuerpos[cuerpo2].px) && (cuerpos[cuerpo1].py == cuerpos[cuerpo2].py) && (cuerpos[cuerpo1].pz == cuerpos[cuerpo2].pz))
                 continue;
 
@@ -98,7 +99,7 @@ void calcularFuerzas(int id){
             dif_Y = cuerpos[cuerpo2].py - cuerpos[cuerpo1].py;
             dif_Z = cuerpos[cuerpo2].pz - cuerpos[cuerpo1].pz;
             distancia = sqrt(dif_X*dif_X + dif_Y*dif_Y + dif_Z*dif_Z);
-            if (distancia < 1e-5) continue;  // Avoid division by zero
+            if (distancia < 1e-5) continue;
 
             F = (G*cuerpos[cuerpo1].masa*cuerpos[cuerpo2].masa)/(distancia*distancia);
             dif_X *= F;
@@ -119,11 +120,22 @@ void calcularFuerzas(int id){
 	}
 }
 
+void reinicializarFuerzas(int id){
+	int ini = N/CP * id;
+	int fin = N/CP * (id + 1);
+	for(int i = ini; i < fin; i++) {
+	    fuerza_totalX[i] = 0.0;
+		fuerza_totalY[i] = 0.0;
+		fuerza_totalZ[i] = 0.0;
+	}
+}
+
 void moverCuerpos(cuerpo_t *cuerpos, int N, int dt,int id){
     int cuerpo;
 	int offset = N/T * idW;
     int ini= offset + id*subN/CP;
 	int fin = offset + (id+1)*subN/CP;
+
 	for(cuerpo=ini;cuerpo<fin;cuerpo++){
 
         fuerza_totalX[cuerpo] *= 1/cuerpos[cuerpo].masa;
@@ -137,10 +149,6 @@ void moverCuerpos(cuerpo_t *cuerpos, int N, int dt,int id){
         cuerpos[cuerpo].px += cuerpos[cuerpo].vx *dt;
         cuerpos[cuerpo].py += cuerpos[cuerpo].vy *dt;
         //cuerpos[cuerpo].pz += cuerpos[cuerpo].vz *dt;
-
-        fuerza_totalX[cuerpo] = 0.0;
-		fuerza_totalY[cuerpo] = 0.0;
-		fuerza_totalZ[cuerpo] = 0.0;
 
     	}
 }
@@ -169,9 +177,11 @@ void gravitacionCPU(int id){
     calcularFuerzas(id);
     pthread_barrier_wait(&barrier);
 
+
+
     sumarFuerzasParciales(id);
     pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE SUMEN LAS FUERZAS
-    
+
 	if(id == 0){
     // All processes must participate in the reduction
 		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalX, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
@@ -182,7 +192,7 @@ void gravitacionCPU(int id){
     
     moverCuerpos(cuerpos,N,dt,id);
     pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE MUEVAN LOS CUERPOS
-    
+	reinicializarFuerzas(id);
 	if(id == 0){
 		MPI_Allgather(
 			cuerpos + subN * idW, subN * sizeof(cuerpo_t), MPI_BYTE,
@@ -360,18 +370,18 @@ int main(int argc, char * argv[]) {
     fuerzas_parcialesY = (float*)calloc(N*CP,sizeof(float));
     fuerzas_parcialesZ = (float*)calloc(N*CP,sizeof(float));
 
-    // Only process 0 initializes the bodies
-    if (idW == 0) {
-        inicializarCuerpos(cuerpos,N);
-    }
+	if(idW == 0){
+		inicializarCuerpos(cuerpos,N);
+	}
 
     tIni = dwalltime(); 
+
+
 
 	MPI_Bcast(cuerpos, N * sizeof(cuerpo_t), MPI_BYTE, 0, MPI_COMM_WORLD);
 
 
     for(int id=0;id<CP;id++){
-
 		pthread_create(&misThreads[id],NULL,&funcionThread,(void*)id);
 	}
 	
