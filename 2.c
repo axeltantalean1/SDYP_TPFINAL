@@ -79,8 +79,6 @@ pthread_barrier_t barrier;
 //
  
 
-
-
 void calcularFuerzas(int id){
     int cuerpo1, cuerpo2,idN;
     float dif_X, dif_Y, dif_Z;
@@ -177,13 +175,10 @@ void gravitacionCPU(int id){
     calcularFuerzas(id);
     pthread_barrier_wait(&barrier);
 
-
-
     sumarFuerzasParciales(id);
     pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A QUE SE SUMEN LAS FUERZAS
 
 	if(id == 0){
-    // All processes must participate in the reduction
 		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalX, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalY, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
 		MPI_Allreduce(MPI_IN_PLACE, fuerza_totalZ, N, MPI_FLOAT, MPI_SUM, MPI_COMM_WORLD);
@@ -201,7 +196,7 @@ void gravitacionCPU(int id){
 		);
 	}
     
-    pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A que se envien posiciones finales
+    pthread_barrier_wait(&barrier); //PARA QUE TODOS LOS PROCESOS ESPEREN A que se envien y reciban posiciones finales
 }
 
 void *funcionThread(void *arg){
@@ -351,12 +346,10 @@ int main(int argc, char * argv[]) {
     pasos = atoi(argv[3]);
     CP = atoi(argv[4]);
 
-    // Initialize MPI first
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD,&idW);
     MPI_Comm_size(MPI_COMM_WORLD,&T);
     
-    // Calculate subN after MPI is initialized
     subN = N/T;
 
     pthread_t misThreads[CP];
@@ -375,8 +368,6 @@ int main(int argc, char * argv[]) {
 	}
 
     tIni = dwalltime(); 
-
-
 
 	MPI_Bcast(cuerpos, N * sizeof(cuerpo_t), MPI_BYTE, 0, MPI_COMM_WORLD);
 
